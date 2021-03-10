@@ -1,0 +1,147 @@
+openapi: 3.0.0
+info:
+  title: Migration Info API
+  version: 1.0.0
+  description: |
+    This document specifies the Migration Info API. It provides access to a database that keeps track of information
+    about the migration from EASY to a Data Station.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: 'https://dar.dans.knaw.nl'
+    description: Local test VM for Data Station Archaeology
+  - url: 'https://dss.dans.knaw.nl'
+    description: Local test VM for Data Station Social Sciences
+
+paths:
+  /:
+    get:
+      summary: Returns a description of the service.
+      responses:
+        200:
+          description: Description of the service
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: A plain text, human readable description of the service
+                example: |
+                  Migration Info Service is running.
+
+  /datastation/{station}/datasets/{doi}/files:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/Station'
+        - $ref: '#/components/parameters/Doi'
+        - $ref: '#/components/parameters/Sha1sum'
+      summary: Returns matching FileInfo objects
+      responses:
+        200:
+          description: a list of FileInfo objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileInfo'
+        404:
+          description: Not Found
+
+  /datastation/{station}/datasets/{doi}/files/{storageIdentifier}:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/Station'
+        - $ref: '#/components/parameters/Doi'
+        - $ref: '#/components/parameters/StorageIdentifier'
+      summary: Returns the FileInfo for the specified storageIdentifier
+      responses:
+        200:
+          description: a single FileInfo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInfo'
+        404:
+          description: Not Found
+    put:
+      parameters:
+        - $ref: '#/components/parameters/Station'
+        - $ref: '#/components/parameters/Doi'
+        - $ref: '#/components/parameters/StorageIdentifier'
+      summary: Stores FileInfo for a storageIdentifier
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileInfo'
+      responses:
+        204:
+          description: No Content. Successfully stored.
+        400:
+          description: Bad Request. The offered entity could not be processed as FileInfo JSON.
+    delete:
+      parameters:
+        - $ref: '#/components/parameters/Station'
+        - $ref: '#/components/parameters/Doi'
+        - $ref: '#/components/parameters/StorageIdentifier'
+      summary: Deletes FileInfo for a storageIdentifier
+      responses:
+        204:
+          description: No Content. Successfully deleted.
+        404:
+          description: Not Found. The specified object was not found.
+
+components:
+
+  parameters:
+    Station:
+      in: path
+      name: station
+      schema:
+        type: string
+      description: shortname of the Data Station
+      required: true
+    Doi:
+      in: path
+      name: doi
+      schema:
+        type: string
+      description: DOI of the dataset
+      required: true
+    Sha1sum:
+      in: query
+      name: sha1sum
+      schema:
+        type: string
+      description: hex encoded SHA-1 checksum
+      required: false
+    StorageIdentifier:
+      in: path
+      name: storageIdentifier
+      schema:
+        type: string
+      description: the storage identifier
+      required: true
+
+
+  schemas:
+
+    FileInfo:
+      example:
+        datastation: Archaeology
+        doi: '10.5072/abc123'
+        storageIdentifier: '177e3b26cf8-166dd1dce60c'
+        sha1sum: '38378555340e30feb6f85081f538b82f70cf1271'
+      type: object
+      properties:
+        datastation:
+          type: string
+        doi:
+          type: string
+        storageIdentifier:
+          type: string
+        sha1sum:
+          type: string
+

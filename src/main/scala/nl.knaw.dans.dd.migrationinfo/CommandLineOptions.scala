@@ -26,8 +26,8 @@ class CommandLineOptions(args: Array[String], configuration: Configuration) exte
   val description: String = s"""Migration info service"""
   val synopsis: String =
     s"""
-       |  $printedName (synopsis of command line parameters)
-       |  $printedName (... possibly multiple lines for subcommands)""".stripMargin
+       |  $printedName run-service
+       |  """.stripMargin
 
   version(s"$printedName v${ configuration.version }")
   banner(

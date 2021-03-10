@@ -24,6 +24,7 @@ repo_url: https://github.com/DANS-KNAW/dd-migration-info
 
 nav:
   - Manual: index.md
+  - HTTP API: to-api.md
 
 plugins:
   - markdownextradata

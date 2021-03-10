@@ -1,18 +1,18 @@
 dd-migration-info
 ================
 
+Migration info service
 
 SYNOPSIS
 --------
 
-    dd-migration-info (synopsis of command line parameters)
-    dd-migration-info (... possibly multiple lines for subcommands)
+    dd-migration-info run-service
 
 
 DESCRIPTION
 -----------
 
-Migration info service
+
 
 
 ARGUMENTS
