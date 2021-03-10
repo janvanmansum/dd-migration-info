@@ -1,10 +1,9 @@
 name: Build documentation site
 
 on:
-  workflow_run:
-    workflows: [Build project]
-    branches: [master]
-    types: [completed]
+  push:
+    branches:
+      - master
 
 jobs:
   mkdocs:
