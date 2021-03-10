@@ -1,0 +1,18 @@
+[Unit]
+Description=DD Migration Info Service
+
+[Service]
+ExecStart=/bin/java \
+   $INITIAL_HEAP_SIZE \
+   -Dlogback.configurationFile=/etc/opt/dans.knaw.nl/dd-migration-info/logback-service.xml \
+   -Dapp.home=/opt/dans.knaw.nl/dd-migration-info \
+   -Dorg.scalatra.environment="production" \
+   -jar /opt/dans.knaw.nl/dd-migration-info/bin/dd-migration-info.jar run-service
+# Java returns 143 even if the SIGTERM was handled correctly.
+SuccessExitStatus=143
+
+User=dd-migration-info
+Group=dd-migration-info
+
+[Install]
+WantedBy=multi-user.target
