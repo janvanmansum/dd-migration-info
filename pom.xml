@@ -36,7 +36,7 @@
     <inceptionYear>2021</inceptionYear>
 
     <properties>
-        <main-class>nl.knaw.dans.dd.migrationinfo.Command</main-class>
+       <main-class>nl.knaw.dans.dd.migrationinfo.Command</main-class>
     </properties>
 
     <scm>
