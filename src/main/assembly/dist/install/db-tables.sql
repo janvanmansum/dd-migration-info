@@ -1,7 +1,8 @@
-CREATE TABLE IF NOT EXISTS objectstore_file (
-    storage_id CHAR(28) NOT NULL PRIMARY KEY,
-    datastation CHAR(20) NOT NULL,
-    doi CHAR(40) NOT NULL,
-    sha1sum CHAR(40) NOT NULL
+CREATE TABLE IF NOT EXISTS data_file (
+    storage_identifier CHAR(28) NOT NULL PRIMARY KEY,
+    file_name VARCHAR(1000) NOT NULL,
+    mime_type VARCHAR(50) NOT NULL,
+    sha1_checksum CHAR(40) NOT NULL,
+    file_size BIGINT NOT NULL);
 
-GRANT INSERT, SELECT, UPDATE, DELETE ON objectstore_file TO dd_migration_info;
+GRANT INSERT, SELECT, UPDATE, DELETE ON data_file TO dd_migration_info;
