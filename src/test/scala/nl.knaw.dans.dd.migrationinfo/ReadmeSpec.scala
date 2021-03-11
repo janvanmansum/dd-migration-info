@@ -25,6 +25,10 @@ class ReadmeSpec extends AnyFlatSpec with Matchers with CustomMatchers {
 
   private val configuration = Configuration(
     version = "my-version",
+    databaseDriver = null,
+    databaseUrl = null,
+    databaseUser = null,
+    databasePassword = null,
     serverPort = 12345,
   )
   private val clo = new CommandLineOptions(Array[String](), configuration) {

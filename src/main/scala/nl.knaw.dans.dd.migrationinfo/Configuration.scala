@@ -20,10 +20,14 @@ import better.files.File.root
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import org.apache.commons.configuration.PropertiesConfiguration
 
+import java.net.URI
+
 case class Configuration(version: String,
                          serverPort: Int,
-                         // other configuration properties defined in application.properties
-                        )
+                         databaseUrl: URI,
+                         databaseUser: String,
+                         databasePassword: String,
+                         databaseDriver: String)
 
 object Configuration extends DebugEnhancedLogging {
 
@@ -38,14 +42,16 @@ object Configuration extends DebugEnhancedLogging {
       load((cfgPath / "application.properties").toJava)
     }
     val version = (home / "bin" / "version").contentAsString.stripLineEnd
-    val agent = properties.getString("http.agent",s"dd-migration-info/$version")
+    val agent = properties.getString("http.agent", s"dd-migration-info/$version")
     logger.info(s"setting http.agent to $agent")
     System.setProperty("http.agent", agent)
 
     new Configuration(
       version,
       serverPort = properties.getInt("daemon.http.port"),
-      // read other properties defined in application.properties
-    )
+      databaseUrl = new URI(properties.getString("database.url")),
+      databaseUser = properties.getString("database.user"),
+      databasePassword = properties.getString("database.password"),
+      databaseDriver = properties.getString("database.driver"))
   }
 }

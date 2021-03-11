@@ -15,14 +15,44 @@
  */
 package nl.knaw.dans.dd.migrationinfo
 
+import nl.knaw.dans.lib.dataverse.model.file.prestaged.DataFile
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
+import org.json4s.native.JsonMethods
+import org.json4s.{ DefaultFormats, Formats }
 import org.scalatra._
 
 class DdMigrationInfoServlet(app: DdMigrationInfoApp,
-                         version: String) extends ScalatraServlet with DebugEnhancedLogging {
+                             version: String) extends ScalatraServlet with DebugEnhancedLogging {
 
   get("/") {
     contentType = "text/plain"
-    Ok(s"DD Migration Info Service running ($version)")
+    Ok(s"Migration Info Service running ($version)")
+  }
+
+  get("/datafiles/:storageIdentifier") {
+    contentType = "application/json"
+
+    Ok("")
+  }
+
+  put("/datafiles/:storageIdentifier") {
+    implicit val jsonFormats: Formats = DefaultFormats
+    contentType = "application/json"
+
+    val storageId = params("storageIdentifier")
+    debug(s"storageId = $storageId")
+    debug(s"body = '${request.body}'")
+    val dataFile = JsonMethods.parse(request.body).extract[DataFile]
+    if (storageId != dataFile.storageIdentifier.split(":").last) BadRequest("Storage identifier in path and request body must be the same")
+    else app.createDataFile(dataFile)
+      .map(_ => NoContent())
+      .recover {
+        case e: DataFileAlreadyStoredException => Conflict(e.getMessage)
+        case e => InternalServerError(e)
+      }.get
+  }
+
+  delete("/datafiles/:storageIdentifier") {
+    NoContent()
   }
 }
