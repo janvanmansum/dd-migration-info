@@ -56,4 +56,25 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
           Failure(DataFileAlreadyStoredException(df))
       }
   }
+
+  def getDataFile(storageId: String): Try[DataFile] = {
+    trace(storageId)
+    database.doTransaction(implicit c => readDataFileRecord(storageId))
+  }
+
+  private def readDataFileRecord(storageIdentifier: String)(implicit c: Connection): Try[DataFile] = {
+    trace(storageIdentifier)
+    managed(c.prepareStatement("SELECT file_name, mime_type, sha1_checksum, file_size FROM data_file WHERE storage_identifier = ?;"))
+      .map(prepStatement => {
+        prepStatement.setString(1, storageIdentifier)
+        prepStatement.executeQuery()
+      })
+      .tried
+      .map(_ => ())
+      .recoverWith {
+        case e: SQLException if e.getMessage.toLowerCase contains "unique constraint" =>
+          Failure(DataFileAlreadyStoredException(df))
+      }
+  }
+
 }
