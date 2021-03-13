@@ -17,34 +17,41 @@ package nl.knaw.dans.dd.migrationinfo
 
 import nl.knaw.dans.lib.dataverse.model.file.prestaged.DataFile
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
-import org.json4s.native.JsonMethods
+import org.json4s.native.{ JsonMethods, Serialization }
 import org.json4s.{ DefaultFormats, Formats }
-import org.scalatra._
+import org.scalatra.{ BadRequest, _ }
 
 class DdMigrationInfoServlet(app: DdMigrationInfoApp,
                              version: String) extends ScalatraServlet with DebugEnhancedLogging {
+  implicit val jsonFormats: Formats = DefaultFormats
 
   get("/") {
     contentType = "text/plain"
     Ok(s"Migration Info Service running ($version)")
   }
 
-  get("/datafiles/:storageIdentifier") {
-    contentType = "application/json"
-
-    Ok("")
+  get("/datafiles/:bucket/:id") {
+    val bucket = params("bucket")
+    val id = params("id")
+    app.getDataFile(bucket, id)
+      .map(_.map(f => Ok(Serialization.writePretty(f)))
+        .getOrElse(NotFound("Not Found"))).get
   }
 
-  put("/datafiles/:storageIdentifier") {
-    implicit val jsonFormats: Formats = DefaultFormats
+  put("/datafiles/:bucket/:id") {
     contentType = "application/json"
 
-    val storageId = params("storageIdentifier")
-    debug(s"storageId = $storageId")
-    debug(s"body = '${request.body}'")
+    val bucket = params("bucket")
+    val id = params("id")
+    debug(s"id = $id")
+    debug(s"body = '${ request.body }'")
     val dataFile = JsonMethods.parse(request.body).extract[DataFile]
-    if (storageId != dataFile.storageIdentifier.split(":").last) BadRequest("Storage identifier in path and request body must be the same")
-    else app.createDataFile(dataFile)
+
+    val storageIdFromFile = dataFile.storageIdentifier.split(":|s3://").filterNot(_.isEmpty)
+
+    if (storageIdFromFile.length == 2 && (storageIdFromFile(0) != bucket || storageIdFromFile(1) != id))
+      BadRequest("Storage identifier in path and request body must be the same")
+    else app.createDataFile(bucket, id, dataFile)
       .map(_ => NoContent())
       .recover {
         case e: DataFileAlreadyStoredException => Conflict(e.getMessage)
@@ -52,7 +59,13 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
       }.get
   }
 
-  delete("/datafiles/:storageIdentifier") {
-    NoContent()
+  delete("/datafiles/:bucket/:id") {
+    val bucket = params("bucket")
+    val id = params("id")
+    app.deleteDataFile(bucket, id).map(_ => NoContent())
+      .recover {
+        case e: NoSuchElementException => NotFound("No such data file")
+        case e => InternalServerError(e)
+      }.get
   }
 }

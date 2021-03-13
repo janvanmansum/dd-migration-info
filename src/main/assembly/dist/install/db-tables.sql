@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS data_file (
-    storage_identifier CHAR(60) NOT NULL PRIMARY KEY,
+    storage_identifier VARCHAR(60) NOT NULL PRIMARY KEY,
     file_name VARCHAR(1000) NOT NULL,
     mime_type VARCHAR(50) NOT NULL,
     sha1_checksum CHAR(40) NOT NULL,

@@ -15,11 +15,12 @@
  */
 package nl.knaw.dans.dd.migrationinfo
 
-import nl.knaw.dans.lib.dataverse.model.file.prestaged.DataFile
+import nl.knaw.dans.lib.dataverse.model.file.prestaged.{ Checksum, DataFile }
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import resource.managed
 
 import java.sql.{ Connection, SQLException }
+import scala.collection.mutable
 import scala.util.{ Failure, Try }
 
 class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogging {
@@ -33,16 +34,16 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
   database.initConnectionPool()
   logger.info("Database connection initialized.")
 
-  def createDataFile(df: DataFile): Try[Unit] = {
-    database.doTransaction(implicit c => writeDataFileRecord(df))
+  def createDataFile(bucket: String, storageId: String, df: DataFile): Try[Unit] = {
+    database.doTransaction(implicit c => writeDataFileRecord(bucket, storageId, df))
   }
 
-  private def writeDataFileRecord(df: DataFile)(implicit c: Connection): Try[Unit] = {
-    trace(df)
+  private def writeDataFileRecord(bucket: String, id: String, df: DataFile)(implicit c: Connection): Try[Unit] = {
+    trace(bucket, id, df)
 
     managed(c.prepareStatement("INSERT INTO data_file VALUES (?, ?, ?, ?, ?);"))
       .map(prepStatement => {
-        prepStatement.setString(1, df.storageIdentifier)
+        prepStatement.setString(1, getNormalizedStorageIdentifier(bucket, id))
         prepStatement.setString(2, df.fileName)
         prepStatement.setString(3, df.mimeType)
         prepStatement.setString(4, df.checksum.`@value`)
@@ -57,24 +58,55 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
       }
   }
 
-  def getDataFile(storageId: String): Try[DataFile] = {
-    trace(storageId)
-    database.doTransaction(implicit c => readDataFileRecord(storageId))
+  private def getNormalizedStorageIdentifier(bucket: String, id: String): String = {
+    s"s3://${ bucket.toLowerCase }:${ id.toLowerCase }"
   }
 
-  private def readDataFileRecord(storageIdentifier: String)(implicit c: Connection): Try[DataFile] = {
-    trace(storageIdentifier)
-    managed(c.prepareStatement("SELECT file_name, mime_type, sha1_checksum, file_size FROM data_file WHERE storage_identifier = ?;"))
+  def getDataFile(bucket: String, storageId: String): Try[Option[DataFile]] = {
+    trace(storageId)
+    database.doTransaction(implicit c => readDataFileRecord(bucket, storageId)).map(_.headOption)
+  }
+
+  private def readDataFileRecord(bucket: String, id: String)(implicit c: Connection): Try[List[DataFile]] = {
+    trace(bucket, id)
+    managed(c.prepareStatement("SELECT storage_identifier, file_name, mime_type, sha1_checksum, file_size FROM data_file WHERE storage_identifier = ?;"))
       .map(prepStatement => {
-        prepStatement.setString(1, storageIdentifier)
+        prepStatement.setString(1, getNormalizedStorageIdentifier(bucket, id))
         prepStatement.executeQuery()
+      })
+      .map(r => {
+        val dataFiles = new mutable.ListBuffer[DataFile]()
+
+        while (r.next()) {
+          dataFiles.append(
+            DataFile(
+              storageIdentifier = r.getString("storage_identifier"),
+              fileName = r.getString("file_name"),
+              mimeType = r.getString("mime_type"),
+              checksum = Checksum(
+                `@type` = "SHA-1",
+                `@value` = r.getString("sha1_checksum")
+              ),
+              fileSize = r.getLong("file_size"))
+          )
+        }
+        dataFiles.toList
+      }).tried
+  }
+
+  def deleteDataFile(bucket: String, id: String): Try[Unit] = {
+    database.doTransaction(implicit c => deleteDataFileRecord(bucket, id))
+  }
+
+  private def deleteDataFileRecord(bucket: String, id: String)(implicit c: Connection): Try[Unit] = {
+    trace(bucket, id)
+    managed(c.prepareStatement("DELETE FROM data_file WHERE storage_identifier = ?"))
+      .map(prepStatement => {
+        prepStatement.setString(1, getNormalizedStorageIdentifier(bucket, id))
+        val n = prepStatement.executeUpdate()
+        if (n == 0) throw new NoSuchElementException("Record not found")
       })
       .tried
       .map(_ => ())
-      .recoverWith {
-        case e: SQLException if e.getMessage.toLowerCase contains "unique constraint" =>
-          Failure(DataFileAlreadyStoredException(df))
-      }
   }
-
 }
