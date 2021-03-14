@@ -16,9 +16,11 @@
 package nl.knaw.dans.dd.migrationinfo
 
 import nl.knaw.dans.lib.dataverse.DataverseInstance
+import nl.knaw.dans.lib.dataverse.model.dataset.DatasetVersion
 import nl.knaw.dans.lib.dataverse.model.file.FileMeta
 import nl.knaw.dans.lib.dataverse.model.file.prestaged.{ Checksum, DataFile }
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
+import nl.knaw.dans.lib.error._
 import resource.managed
 
 import java.sql.{ Connection, SQLException }
@@ -113,21 +115,40 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
       .map(_ => ())
   }
 
-  def addRecordFor(fileId: String): Try[Unit] = {
-    trace(fileId)
+  def addRecordsFor(datasetId: String): Try[Unit] = {
+    trace(datasetId)
 
     for {
-      r <- if (fileId.forall(_.isDigit)) dataverse.file(fileId.toInt).getMetadata
-           else dataverse.file(fileId).getMetadata
-      m <- r.data
-      df <- getPrestagedDataFile(m)
-      (b, id) <- splitStorageIdentifier(df.storageIdentifier)
-      _ <- createDataFile(b, id, df)
+      r <- if (datasetId.forall(_.isDigit)) dataverse.dataset(datasetId.toInt).viewAllVersions()
+           else dataverse.dataset(datasetId).viewAllVersions()
+      vs <- r.data
+      dfs <- collectUniqueDataFiles(vs)
+      _ <- createDataFiles(dfs)
     } yield ()
   }
 
-  private def getPrestagedDataFile(fm: FileMeta): Try[DataFile] = Try {
-    fm.dataFile.map(_.toPrestaged).get
+  /**
+   * Returns all the unique data files for this version sequence. Unless a file is replaced (i.e. its contents is changed)
+   * or deleted, the underlying data file is reused in subsequent versions.
+   *
+   * @param datasetVersions list of dataset versions
+   * @return
+   */
+  private def collectUniqueDataFiles(datasetVersions: List[DatasetVersion]): Try[List[DataFile]] = Try {
+    trace(datasetVersions)
+    datasetVersions.collect {
+      case v => v.files.map(f => f.dataFile.get.toPrestaged).map(pf => (pf.storageIdentifier, pf))
+    }.flatten.toMap.values.toList
   }
 
+  private def createDataFiles(dataFiles: List[DataFile]): Try[Unit] = {
+    trace(dataFiles)
+    dataFiles.map {
+      df =>
+        for {
+          (bucket, id) <- splitStorageIdentifier(df.storageIdentifier)
+          _ <- createDataFile(bucket, id, df)
+        } yield ()
+    }.collectResults.map(_ => ())
+  }
 }

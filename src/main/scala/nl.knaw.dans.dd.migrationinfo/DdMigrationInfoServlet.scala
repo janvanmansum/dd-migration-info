@@ -70,8 +70,11 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
       }.get
   }
 
-  post("/files/:id/add-record") {
-    val fileId = params("id")
-    app.addRecordFor(fileId).map(_ => Ok(s"Record added for file $fileId")).get
+  post("/datasets/:id/add-records") {
+    val datasetId = {
+      if (params("id") == ":persistentId") params("persistentId")
+      else params("id")
+    }
+    app.addRecordsFor(datasetId).map(_ => Ok(s"Records added for dataset $datasetId")).get
   }
 }
