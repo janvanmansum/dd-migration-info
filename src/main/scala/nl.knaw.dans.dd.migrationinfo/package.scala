@@ -15,6 +15,15 @@
  */
 package nl.knaw.dans.dd
 
-package object migrationinfo {
+import scala.util.{ Failure, Try, Success }
 
+package object migrationinfo {
+  type Bucket = String
+  type Id = String
+
+  def splitStorageIdentifier(si: String): Try[(Bucket, Id)] = {
+    val parts = si.split(":|s3://").filterNot(_.isEmpty)
+    if (parts.length != 2) Failure(new IllegalArgumentException(s"Not a valid storageIdentifier: $si"))
+    else Success(parts(0), parts(1))
+  }
 }

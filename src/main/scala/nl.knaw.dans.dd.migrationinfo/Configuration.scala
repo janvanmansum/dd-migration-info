@@ -17,17 +17,20 @@ package nl.knaw.dans.dd.migrationinfo
 
 import better.files.File
 import better.files.File.root
+import nl.knaw.dans.lib.dataverse.DataverseInstanceConfig
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import org.apache.commons.configuration.PropertiesConfiguration
 
 import java.net.URI
 
+// TODO: Create separate DatabaseConfig case class.
 case class Configuration(version: String,
                          serverPort: Int,
                          databaseUrl: URI,
                          databaseUser: String,
                          databasePassword: String,
-                         databaseDriver: String)
+                         databaseDriver: String,
+                         dataverse: DataverseInstanceConfig)
 
 object Configuration extends DebugEnhancedLogging {
 
@@ -52,6 +55,14 @@ object Configuration extends DebugEnhancedLogging {
       databaseUrl = new URI(properties.getString("database.url")),
       databaseUser = properties.getString("database.user"),
       databasePassword = properties.getString("database.password"),
-      databaseDriver = properties.getString("database.driver"))
+      databaseDriver = properties.getString("database.driver"),
+      dataverse = DataverseInstanceConfig(
+        connectionTimeout = properties.getInt("dataverse.connection-timeout-ms"),
+        readTimeout = properties.getInt("dataverse.read-timeout-ms"),
+        baseUrl = new URI(properties.getString("dataverse.base-url")),
+        apiToken = properties.getString("dataverse.api-key"),
+        apiVersion = properties.getString("dataverse.api-version"),
+        unblockKey = Option(properties.getString("dataverse.admin-api-unblock-key"))
+      ))
   }
 }

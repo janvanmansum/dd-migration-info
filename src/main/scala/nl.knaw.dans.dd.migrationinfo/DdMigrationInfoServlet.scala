@@ -47,16 +47,17 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
     debug(s"body = '${ request.body }'")
     val dataFile = JsonMethods.parse(request.body).extract[DataFile]
 
-    val storageIdFromFile = dataFile.storageIdentifier.split(":|s3://").filterNot(_.isEmpty)
-
-    if (storageIdFromFile.length == 2 && (storageIdFromFile(0) != bucket || storageIdFromFile(1) != id))
-      BadRequest("Storage identifier in path and request body must be the same")
-    else app.createDataFile(bucket, id, dataFile)
-      .map(_ => NoContent())
-      .recover {
-        case e: DataFileAlreadyStoredException => Conflict(e.getMessage)
-        case e => InternalServerError(e)
-      }.get
+    splitStorageIdentifier(dataFile.storageIdentifier).map {
+      case (bucketFromFile, idFromFile) =>
+        if (bucketFromFile != bucket || idFromFile != id)
+          BadRequest("Storage identifier in path and request body must be the same")
+        else app.createDataFile(bucket, id, dataFile)
+          .map(_ => NoContent())
+          .recover {
+            case e: DataFileAlreadyStoredException => Conflict(e.getMessage)
+            case e => InternalServerError(e)
+          }.get
+    }.get
   }
 
   delete("/datafiles/:bucket/:id") {
@@ -67,5 +68,10 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
         case e: NoSuchElementException => NotFound("No such data file")
         case e => InternalServerError(e)
       }.get
+  }
+
+  post("/files/:id/add-record") {
+    val fileId = params("id")
+    app.addRecordFor(fileId).map(_ => Ok(s"Record added for file $fileId")).get
   }
 }

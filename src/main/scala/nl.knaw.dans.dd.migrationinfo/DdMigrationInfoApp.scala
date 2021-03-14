@@ -15,6 +15,8 @@
  */
 package nl.knaw.dans.dd.migrationinfo
 
+import nl.knaw.dans.lib.dataverse.DataverseInstance
+import nl.knaw.dans.lib.dataverse.model.file.FileMeta
 import nl.knaw.dans.lib.dataverse.model.file.prestaged.{ Checksum, DataFile }
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import resource.managed
@@ -29,6 +31,7 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
     user = configuration.databaseUser,
     password = configuration.databasePassword,
     driver = configuration.databaseDriver)
+  val dataverse = new DataverseInstance(configuration.dataverse)
 
   logger.info("Initializing database connection...")
   database.initConnectionPool()
@@ -109,4 +112,22 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
       .tried
       .map(_ => ())
   }
+
+  def addRecordFor(fileId: String): Try[Unit] = {
+    trace(fileId)
+
+    for {
+      r <- if (fileId.forall(_.isDigit)) dataverse.file(fileId.toInt).getMetadata
+           else dataverse.file(fileId).getMetadata
+      m <- r.data
+      df <- getPrestagedDataFile(m)
+      (b, id) <- splitStorageIdentifier(df.storageIdentifier)
+      _ <- createDataFile(b, id, df)
+    } yield ()
+  }
+
+  private def getPrestagedDataFile(fm: FileMeta): Try[DataFile] = Try {
+    fm.dataFile.map(_.toPrestaged).get
+  }
+
 }
