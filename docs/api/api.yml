@@ -32,18 +32,10 @@ paths:
 
 
   /datasets/{id}/datafiles/actions/load-from-dataverse:
+    parameters:
+      - $ref: "#/components/parameters/DatasetIdentifier"
+      - $ref: "#/components/parameters/PersistentIdentifier"
     post:
-      parameters:
-        - in: path
-          name: id
-          schema:
-            type: string
-          required: true
-        - in: query
-          name: persistentId
-          schema:
-            type: string
-          required: false
       summary: Adds the records for the unique data files in the specified dataset
       responses:
         200:
@@ -52,18 +44,10 @@ paths:
           description: Not Found. Could not find the specified dataset
 
   /datasets/{id}/datafiles:
+    parameters:
+      - $ref: "#/components/parameters/DatasetIdentifier"
+      - $ref: "#/components/parameters/PersistentIdentifier"
     get:
-      parameters:
-        - in: path
-          name: id
-          schema:
-            type: string
-          required: true
-        - in: query
-          name: persistentId
-          schema:
-            type: string
-          required: false
       summary: Retrieves the unique datafiles from the specified dataset
       responses:
         200:
@@ -74,24 +58,14 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DataFile'
+        404:
+          description: Not Found. Not records for specified Dataset could be found.
 
   /datasets/{id}/datafiles/{storageId}:
     parameters:
-      - in: path
-        name: id
-        schema:
-          type: string
-        required: true
-      - in: path
-        name: storageId
-        schema:
-          type: string
-        required: true
-      - in: query
-        name: persistentId
-        schema:
-          type: string
-        required: false
+      - $ref: "#/components/parameters/DatasetIdentifier"
+      - $ref: "#/components/parameters/StorageIdentifier"
+      - $ref: "#/components/parameters/PersistentIdentifier"
     get:
       summary: Retrieves the datafile record with the specified storage identifier and dataset
       responses:
@@ -106,8 +80,10 @@ paths:
     put:
       summary: Writes/updates the datafile record with the specified storage identifier and dataset
       responses:
+        201:
+          description: Created. Created new record.
         204:
-          description: No Content
+          description: No Content. Updated existing record.
 
 
   /datasets/actions/load-from-dataverse:
@@ -115,7 +91,7 @@ paths:
       summary: Loads all datafile records for all datasets in the configured dataverse
       responses:
         201:
-          description: Created
+          description: Created.
         400:
           description: Bad Request. Configured dataverse could not be found.
 
@@ -124,6 +100,9 @@ components:
   parameters:
 
     DatasetIdentifier:
+      description: |
+        Database ID of the dataset or the string `:persistentId`to indicate that a DOI is
+        specified in the query parameter `persistentId`
       in: path
       name: id
       schema:
@@ -131,6 +110,7 @@ components:
       required: true
 
     StorageIdentifier:
+      description: Storage identifier of a file
       in: path
       name: storageId
       schema:
@@ -138,6 +118,7 @@ components:
       required: true
 
     PersistentIdentifier:
+      description: The DOI of the dataset
       in: query
       name: persistentId
       schema:
