@@ -30,118 +30,141 @@ paths:
                 example: |
                   Migration Info Service is running.
 
-  /datastation/{station}/datasets/{doi}/files:
-    get:
+
+  /datasets/{id}/datafiles/actions/load-from-dataverse:
+    post:
       parameters:
-        - $ref: '#/components/parameters/Station'
-        - $ref: '#/components/parameters/Doi'
-        - $ref: '#/components/parameters/Sha1sum'
-      summary: Returns matching FileInfo objects
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: persistentId
+          schema:
+            type: string
+          required: false
+      summary: Adds the records for the unique data files in the specified dataset
       responses:
         200:
-          description: a list of FileInfo objects
+          description: OK. Added data file records
+        404:
+          description: Not Found. Could not find the specified dataset
+
+  /datasets/{id}/datafiles:
+    get:
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: persistentId
+          schema:
+            type: string
+          required: false
+      summary: Retrieves the unique datafiles from the specified dataset
+      responses:
+        200:
+          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/FileInfo'
-        404:
-          description: Not Found
+                  $ref: '#/components/schemas/DataFile'
 
-  /datastation/{station}/datasets/{doi}/files/{storageIdentifier}:
+  /datasets/{id}/datafiles/{storageId}:
+    parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: storageId
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: persistentId
+        schema:
+          type: string
+        required: false
     get:
-      parameters:
-        - $ref: '#/components/parameters/Station'
-        - $ref: '#/components/parameters/Doi'
-        - $ref: '#/components/parameters/StorageIdentifier'
-      summary: Returns the FileInfo for the specified storageIdentifier
+      summary: Retrieves the datafile record with the specified storage identifier and dataset
       responses:
         200:
-          description: a single FileInfo
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FileInfo'
+                $ref: '#/components/schemas/DataFile'
         404:
           description: Not Found
     put:
-      parameters:
-        - $ref: '#/components/parameters/Station'
-        - $ref: '#/components/parameters/Doi'
-        - $ref: '#/components/parameters/StorageIdentifier'
-      summary: Stores FileInfo for a storageIdentifier
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FileInfo'
+      summary: Writes/updates the datafile record with the specified storage identifier and dataset
       responses:
         204:
-          description: No Content. Successfully stored.
+          description: No Content
+
+
+  /datasets/actions/load-from-dataverse:
+    post:
+      summary: Loads all datafile records for all datasets in the configured dataverse
+      responses:
+        201:
+          description: Created
         400:
-          description: Bad Request. The offered entity could not be processed as FileInfo JSON.
-    delete:
-      parameters:
-        - $ref: '#/components/parameters/Station'
-        - $ref: '#/components/parameters/Doi'
-        - $ref: '#/components/parameters/StorageIdentifier'
-      summary: Deletes FileInfo for a storageIdentifier
-      responses:
-        204:
-          description: No Content. Successfully deleted.
-        404:
-          description: Not Found. The specified object was not found.
+          description: Bad Request. Configured dataverse could not be found.
 
 components:
 
   parameters:
-    Station:
+
+    DatasetIdentifier:
       in: path
-      name: station
+      name: id
       schema:
         type: string
-      description: shortname of the Data Station
       required: true
-    Doi:
-      in: path
-      name: doi
-      schema:
-        type: string
-      description: DOI of the dataset
-      required: true
-    Sha1sum:
-      in: query
-      name: sha1sum
-      schema:
-        type: string
-      description: hex encoded SHA-1 checksum
-      required: false
+
     StorageIdentifier:
       in: path
-      name: storageIdentifier
+      name: storageId
       schema:
         type: string
-      description: the storage identifier
       required: true
+
+    PersistentIdentifier:
+      in: query
+      name: persistentId
+      schema:
+        type: string
+      required: false
 
 
   schemas:
 
-    FileInfo:
-      example:
-        datastation: Archaeology
-        doi: '10.5072/abc123'
-        storageIdentifier: '177e3b26cf8-166dd1dce60c'
-        sha1sum: '38378555340e30feb6f85081f538b82f70cf1271'
+    DataFile:
       type: object
       properties:
-        datastation:
-          type: string
-        doi:
-          type: string
         storageIdentifier:
           type: string
-        sha1sum:
+        fileName:
           type: string
+        mimeType:
+          type: string
+        checksum:
+          $ref: "#/components/schemas/Checksum"
+        fileSize:
+          type: integer
 
+    Checksum:
+      type: object
+      properties:
+        "@type":
+          type: string
+        "@value":
+          type: string
