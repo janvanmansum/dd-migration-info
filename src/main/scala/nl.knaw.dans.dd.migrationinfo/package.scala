@@ -21,9 +21,19 @@ package object migrationinfo {
   type Bucket = String
   type Id = String
 
+  def checkS3storageIdentifier(si: String): Try[Unit] = {
+    if (si matches """^s3://(.*):(.*)$""") Success(())
+    else Failure(new IllegalArgumentException(s"Not a valid S3 storage identifier: $si"))
+  }
+
+  // TODO: refactor to re-use regex instead of split
   def splitStorageIdentifier(si: String): Try[(Bucket, Id)] = {
     val parts = si.split(":|s3://").filterNot(_.isEmpty)
     if (parts.length != 2) Failure(new IllegalArgumentException(s"Not a valid storageIdentifier: $si"))
     else Success(parts(0), parts(1))
+  }
+
+  def getNormalizedStorageIdentifier(bucket: String, id: String): String = {
+    s"s3://${ bucket.toLowerCase }:${ id.toLowerCase }"
   }
 }

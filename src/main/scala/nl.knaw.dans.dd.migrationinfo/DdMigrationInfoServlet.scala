@@ -15,11 +15,11 @@
  */
 package nl.knaw.dans.dd.migrationinfo
 
-import nl.knaw.dans.lib.dataverse.model.file.prestaged.DataFile
+import nl.knaw.dans.lib.dataverse.DataverseException
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
-import org.json4s.native.{ JsonMethods, Serialization }
+import org.json4s.native.Serialization
 import org.json4s.{ DefaultFormats, Formats }
-import org.scalatra.{ BadRequest, _ }
+import org.scalatra._
 
 class DdMigrationInfoServlet(app: DdMigrationInfoApp,
                              version: String) extends ScalatraServlet with DebugEnhancedLogging {
@@ -30,51 +30,28 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
     Ok(s"Migration Info Service running ($version)")
   }
 
-  get("/datafiles/:bucket/:id") {
-    val bucket = params("bucket")
-    val id = params("id")
-    app.getDataFile(bucket, id)
-      .map(_.map(f => Ok(Serialization.writePretty(f)))
-        .getOrElse(NotFound("Not Found"))).get
+  // TODO: convert to getDatasetDoi. If a database ID, the DOI must be looked up in Dataverse
+  private def getDatasetId: String = {
+    if (params("id") == ":persistentId") params("persistentId")
+    else params("id")
   }
 
-  put("/datafiles/:bucket/:id") {
-    contentType = "application/json"
-
-    val bucket = params("bucket")
-    val id = params("id")
-    debug(s"id = $id")
-    debug(s"body = '${ request.body }'")
-    val dataFile = JsonMethods.parse(request.body).extract[DataFile]
-
-    splitStorageIdentifier(dataFile.storageIdentifier).map {
-      case (bucketFromFile, idFromFile) =>
-        if (bucketFromFile != bucket || idFromFile != id)
-          BadRequest("Storage identifier in path and request body must be the same")
-        else app.createDataFile(bucket, id, dataFile)
-          .map(_ => NoContent())
-          .recover {
-            case e: DataFileAlreadyStoredException => Conflict(e.getMessage)
-            case e => InternalServerError(e)
-          }.get
-    }.get
-  }
-
-  delete("/datafiles/:bucket/:id") {
-    val bucket = params("bucket")
-    val id = params("id")
-    app.deleteDataFile(bucket, id).map(_ => NoContent())
+  post("/datasets/:id/datafiles/actions/load-from-dataverse") {
+    val datasetId = getDatasetId
+    app.createDataFileRecordsForDataset(datasetId).map(_ => Ok(s"Records added for dataset $datasetId"))
       .recover {
-        case e: NoSuchElementException => NotFound("No such data file")
+        case e: DataverseException if e.status == 404 => NotFound(s"No such dataset: ${ datasetId }")
         case e => InternalServerError(e)
       }.get
   }
 
-  post("/datasets/:id/add-records") {
-    val datasetId = {
-      if (params("id") == ":persistentId") params("persistentId")
-      else params("id")
-    }
-    app.addRecordsFor(datasetId).map(_ => Ok(s"Records added for dataset $datasetId")).get
+  post("/datasets/actions/load-from-dataverse") {
+    app.createDataFileRecordsForDataverse().map(_ => Ok("Records added for dataverse root")).get
+  }
+
+  get("/datasets/:id/datafiles") {
+    val datasetId = getDatasetId
+    app.getDataFileRecordsForDataset(datasetId)
+      .map(dfs => Ok(Serialization.writePretty(dfs))).get
   }
 }

@@ -16,15 +16,16 @@
 package nl.knaw.dans.dd.migrationinfo
 
 import nl.knaw.dans.lib.dataverse.DataverseInstance
+import nl.knaw.dans.lib.dataverse.model.DataverseItem
 import nl.knaw.dans.lib.dataverse.model.dataset.DatasetVersion
-import nl.knaw.dans.lib.dataverse.model.file.FileMeta
 import nl.knaw.dans.lib.dataverse.model.file.prestaged.{ Checksum, DataFile }
-import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import nl.knaw.dans.lib.error._
+import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import resource.managed
 
 import java.sql.{ Connection, SQLException }
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.util.{ Failure, Try }
 
 class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogging {
@@ -39,20 +40,85 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
   database.initConnectionPool()
   logger.info("Database connection initialized.")
 
-  def createDataFile(bucket: String, storageId: String, df: DataFile): Try[Unit] = {
-    database.doTransaction(implicit c => writeDataFileRecord(bucket, storageId, df))
+  def createDataFileRecordsForDataset(datasetDoi: String): Try[Unit] = {
+    trace(datasetDoi)
+
+    for {
+      r <- dataverse.dataset(datasetDoi).viewAllVersions()
+      vs <- r.data
+      dfs <- collectUniqueDataFilesFromDataverse(vs)
+      _ <- createDataFileRecords(datasetDoi, dfs)
+    } yield ()
   }
 
-  private def writeDataFileRecord(bucket: String, id: String, df: DataFile)(implicit c: Connection): Try[Unit] = {
-    trace(bucket, id, df)
+  def createDataFileRecordsForDataverse(): Try[Unit] = {
+    trace(())
 
-    managed(c.prepareStatement("INSERT INTO data_file VALUES (?, ?, ?, ?, ?);"))
+    for {
+      r <- dataverse.dataverse("root").contents()
+      items <- r.data
+      _ <- items
+        .filter(_.`type` == "dataset")
+        .map(getDoiFromContentItem)
+        .map(createDataFileRecordsForDataset).collectResults
+    } yield ()
+  }
+
+  private def getDoiFromContentItem(item: DataverseItem): String = {
+    val errors = new ListBuffer[String]()
+
+    if (item.protocol.isEmpty) errors.append("has no protocol")
+    if (item.authority.isEmpty) errors.append("has no authority")
+    if (item.identifier.isEmpty) errors.append("has no identifier")
+
+    if (errors.nonEmpty) throw new IllegalArgumentException(s"Item $item has no valid persistent identifier: ${ errors.mkString(", ") }")
+    else s"${ item.protocol.get }:${ item.authority.get }/${ item.identifier.get }"
+  }
+
+  /**
+   * Returns all the unique data files for this version sequence. Unless a file is replaced (i.e. its contents is changed)
+   * or deleted, the underlying data file is reused in subsequent versions.
+   *
+   * @param datasetVersions list of dataset versions
+   * @return
+   */
+  private def collectUniqueDataFilesFromDataverse(datasetVersions: List[DatasetVersion]): Try[List[DataFile]] = Try {
+    trace(datasetVersions)
+    datasetVersions.collect {
+      /*
+       * Files only in draft versions don't have a dataFile yet, so must be skipped.
+       */
+      case v => v.files.filter(_.dataFile.isDefined).map(f => f.dataFile.get.toPrestaged).map(pf => (pf.storageIdentifier, pf))
+    }.flatten.toMap.values.toList
+  }
+
+  private def createDataFileRecords(datasetDoi: String, dataFiles: List[DataFile]): Try[Unit] = {
+    trace(datasetDoi, dataFiles)
+    dataFiles.map {
+      df =>
+        for {
+          _ <- checkS3storageIdentifier(df.storageIdentifier)
+          (bucket, id) <- splitStorageIdentifier(df.storageIdentifier)
+          _ <- createDataFileRecord(datasetDoi, getNormalizedStorageIdentifier(bucket, id), df)
+        } yield ()
+    }.collectResults.map(_ => ())
+  }
+
+  def createDataFileRecord(datasetDoi: String, storageId: String, df: DataFile): Try[Unit] = {
+    database.doTransaction(implicit c => writeDataFileRecord(datasetDoi, storageId, df))
+  }
+
+  private def writeDataFileRecord(datasetDoi: String, storageIdentifier: String, df: DataFile)(implicit c: Connection): Try[Unit] = {
+    trace(datasetDoi, storageIdentifier, df)
+
+    managed(c.prepareStatement("INSERT INTO data_file VALUES (?, ?, ?, ?, ?, ?);"))
       .map(prepStatement => {
-        prepStatement.setString(1, getNormalizedStorageIdentifier(bucket, id))
-        prepStatement.setString(2, df.fileName)
-        prepStatement.setString(3, df.mimeType)
-        prepStatement.setString(4, df.checksum.`@value`)
-        prepStatement.setLong(5, df.fileSize)
+        prepStatement.setString(1, storageIdentifier)
+        prepStatement.setString(2, datasetDoi)
+        prepStatement.setString(3, df.fileName)
+        prepStatement.setString(4, df.mimeType)
+        prepStatement.setString(5, df.checksum.`@value`)
+        prepStatement.setLong(6, df.fileSize)
         prepStatement.executeUpdate()
       })
       .tried
@@ -63,20 +129,15 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
       }
   }
 
-  private def getNormalizedStorageIdentifier(bucket: String, id: String): String = {
-    s"s3://${ bucket.toLowerCase }:${ id.toLowerCase }"
+  def getDataFileRecordsForDataset(datasetId: String): Try[List[DataFile]] = {
+    database.doTransaction(implicit c => readDataFileRecords(datasetId))
   }
 
-  def getDataFile(bucket: String, storageId: String): Try[Option[DataFile]] = {
-    trace(storageId)
-    database.doTransaction(implicit c => readDataFileRecord(bucket, storageId)).map(_.headOption)
-  }
-
-  private def readDataFileRecord(bucket: String, id: String)(implicit c: Connection): Try[List[DataFile]] = {
-    trace(bucket, id)
-    managed(c.prepareStatement("SELECT storage_identifier, file_name, mime_type, sha1_checksum, file_size FROM data_file WHERE storage_identifier = ?;"))
+  private def readDataFileRecords(datasetDoi: String, optId: Option[String] = Option.empty)(implicit c: Connection): Try[List[DataFile]] = {
+    trace(datasetDoi, optId)
+    managed(c.prepareStatement("SELECT storage_identifier, file_name, mime_type, sha1_checksum, file_size FROM data_file WHERE dataset_doi = ?;"))
       .map(prepStatement => {
-        prepStatement.setString(1, getNormalizedStorageIdentifier(bucket, id))
+        prepStatement.setString(1, datasetDoi)
         prepStatement.executeQuery()
       })
       .map(r => {
@@ -97,58 +158,5 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
         }
         dataFiles.toList
       }).tried
-  }
-
-  def deleteDataFile(bucket: String, id: String): Try[Unit] = {
-    database.doTransaction(implicit c => deleteDataFileRecord(bucket, id))
-  }
-
-  private def deleteDataFileRecord(bucket: String, id: String)(implicit c: Connection): Try[Unit] = {
-    trace(bucket, id)
-    managed(c.prepareStatement("DELETE FROM data_file WHERE storage_identifier = ?"))
-      .map(prepStatement => {
-        prepStatement.setString(1, getNormalizedStorageIdentifier(bucket, id))
-        val n = prepStatement.executeUpdate()
-        if (n == 0) throw new NoSuchElementException("Record not found")
-      })
-      .tried
-      .map(_ => ())
-  }
-
-  def addRecordsFor(datasetId: String): Try[Unit] = {
-    trace(datasetId)
-
-    for {
-      r <- if (datasetId.forall(_.isDigit)) dataverse.dataset(datasetId.toInt).viewAllVersions()
-           else dataverse.dataset(datasetId).viewAllVersions()
-      vs <- r.data
-      dfs <- collectUniqueDataFiles(vs)
-      _ <- createDataFiles(dfs)
-    } yield ()
-  }
-
-  /**
-   * Returns all the unique data files for this version sequence. Unless a file is replaced (i.e. its contents is changed)
-   * or deleted, the underlying data file is reused in subsequent versions.
-   *
-   * @param datasetVersions list of dataset versions
-   * @return
-   */
-  private def collectUniqueDataFiles(datasetVersions: List[DatasetVersion]): Try[List[DataFile]] = Try {
-    trace(datasetVersions)
-    datasetVersions.collect {
-      case v => v.files.map(f => f.dataFile.get.toPrestaged).map(pf => (pf.storageIdentifier, pf))
-    }.flatten.toMap.values.toList
-  }
-
-  private def createDataFiles(dataFiles: List[DataFile]): Try[Unit] = {
-    trace(dataFiles)
-    dataFiles.map {
-      df =>
-        for {
-          (bucket, id) <- splitStorageIdentifier(df.storageIdentifier)
-          _ <- createDataFile(bucket, id, df)
-        } yield ()
-    }.collectResults.map(_ => ())
   }
 }

@@ -30,7 +30,8 @@ case class Configuration(version: String,
                          databaseUser: String,
                          databasePassword: String,
                          databaseDriver: String,
-                         dataverse: DataverseInstanceConfig)
+                         dataverse: DataverseInstanceConfig,
+                         bucket: String)
 
 object Configuration extends DebugEnhancedLogging {
 
@@ -63,6 +64,7 @@ object Configuration extends DebugEnhancedLogging {
         apiToken = properties.getString("dataverse.api-key"),
         apiVersion = properties.getString("dataverse.api-version"),
         unblockKey = Option(properties.getString("dataverse.admin-api-unblock-key"))
-      ))
+      ),
+      bucket = properties.getString("dataverse.bucket"))
   }
 }
