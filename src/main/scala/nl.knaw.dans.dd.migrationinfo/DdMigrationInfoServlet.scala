@@ -16,10 +16,13 @@
 package nl.knaw.dans.dd.migrationinfo
 
 import nl.knaw.dans.lib.dataverse.DataverseException
+import nl.knaw.dans.lib.error._
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import org.json4s.native.Serialization
 import org.json4s.{ DefaultFormats, Formats }
 import org.scalatra._
+
+import scala.util.control.NonFatal
 
 class DdMigrationInfoServlet(app: DdMigrationInfoApp,
                              version: String) extends ScalatraServlet with DebugEnhancedLogging {
@@ -39,14 +42,25 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
   post("/datasets/:id/datafiles/actions/load-from-dataverse") {
     val datasetId = getDatasetId
     app.createDataFileRecordsForDataset(datasetId).map(_ => Ok(s"Records added for dataset $datasetId"))
+      .doIfFailure {
+        case NonFatal(e) => logger.warn(s"Exception when creating DataFile records for dataset $datasetId")
+      }
       .recover {
         case e: DataverseException if e.status == 404 => NotFound(s"No such dataset: ${ datasetId }")
-        case e => InternalServerError(e)
+        case NonFatal(e) => InternalServerError(e.getMessage)
       }.get
   }
 
   post("/datasets/actions/load-from-dataverse") {
-    app.createDataFileRecordsForDataverse().map(_ => Ok("Records added for dataverse root")).get
+    app.createDataFileRecordsForDataverse()
+      .map(_ => Ok("Records added for dataverse root"))
+      .doIfFailure {
+        case NonFatal(e) => logger.warn("Errors when loading data file records from dataverse root", e)
+      }
+      .recover {
+        case NonFatal(e) => InternalServerError(e.getMessage)
+      }
+      .get
   }
 
   get("/datasets/:id/datafiles") {
