@@ -1,5 +1,5 @@
 dd-migration-info
-================
+=================
 
 Migration info service
 

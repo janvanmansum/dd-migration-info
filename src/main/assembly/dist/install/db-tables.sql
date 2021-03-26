@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS data_file (
     storage_identifier VARCHAR(60) NOT NULL PRIMARY KEY,
     dataset_doi VARCHAR(100) NOT NULL,
-    file_name VARCHAR(1000) NOT NULL, -- remove?
+    file_name VARCHAR(1000) NOT NULL,
     mime_type VARCHAR(50) NOT NULL,
     sha1_checksum CHAR(40) NOT NULL,
     file_size BIGINT NOT NULL);
