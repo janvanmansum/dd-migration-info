@@ -59,7 +59,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/DataFile'
         404:
-          description: Not Found. Not records for specified Dataset could be found.
+          description: Not Found. No records for specified Dataset could be found.
 
   /datasets/{id}/datafiles/{storageId}:
     parameters:

@@ -66,6 +66,10 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
   get("/datasets/:id/datafiles") {
     val datasetId = getDatasetId
     app.getDataFileRecordsForDataset(datasetId)
-      .map(dfs => Ok(Serialization.writePretty(dfs))).get
+      .map {
+        dfs =>
+          if (dfs.nonEmpty) Ok(Serialization.writePretty(dfs))
+          else NotFound()
+      }.get
   }
 }
