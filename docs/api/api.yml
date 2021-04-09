@@ -31,7 +31,7 @@ paths:
                   Migration Info Service is running.
 
 
-  /datasets/{id}/datafiles/actions/load-from-dataverse:
+  /datasets/{doi}/actions/load-from-dataverse:
     parameters:
       - $ref: "#/components/parameters/DatasetIdentifier"
       - $ref: "#/components/parameters/PersistentIdentifier"
@@ -43,7 +43,7 @@ paths:
         404:
           description: Not Found. Could not find the specified dataset
 
-  /datasets/{id}/datafiles:
+  /datasets/{doi}/seq/{nr}/basic-file-metas:
     parameters:
       - $ref: "#/components/parameters/DatasetIdentifier"
       - $ref: "#/components/parameters/PersistentIdentifier"
@@ -57,34 +57,9 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/DataFile'
+                  $ref: '#/components/schemas/BasicFileMeta'
         404:
           description: Not Found. No records for specified Dataset could be found.
-
-  /datasets/{id}/datafiles/{storageId}:
-    parameters:
-      - $ref: "#/components/parameters/DatasetIdentifier"
-      - $ref: "#/components/parameters/StorageIdentifier"
-      - $ref: "#/components/parameters/PersistentIdentifier"
-    get:
-      summary: Retrieves the datafile record with the specified storage identifier and dataset
-      responses:
-        200:
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DataFile'
-        404:
-          description: Not Found
-    put:
-      summary: Writes/updates the datafile record with the specified storage identifier and dataset
-      responses:
-        201:
-          description: Created. Created new record.
-        204:
-          description: No Content. Updated existing record.
-
 
   /datasets/actions/load-from-dataverse:
     post:
@@ -128,6 +103,18 @@ components:
 
   schemas:
 
+    BasicFileMeta:
+      type: object
+      properties:
+        label:
+          type: string
+        directoryLabel:
+          type: string
+        datasetSequenceNumber:
+          type: string
+        dataFile:
+          $ref: '#/components/schemas/DataFile'
+
     DataFile:
       type: object
       properties:
@@ -149,3 +136,4 @@ components:
           type: string
         "@value":
           type: string
+
