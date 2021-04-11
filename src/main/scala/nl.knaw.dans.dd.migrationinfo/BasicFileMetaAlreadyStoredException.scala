@@ -15,6 +15,4 @@
  */
 package nl.knaw.dans.dd.migrationinfo
 
-import nl.knaw.dans.lib.dataverse.model.file.prestaged.DataFile
-
-case class DataFileAlreadyStoredException(df: DataFile) extends RuntimeException(s"Data file with storageIdentifier ${df.storageIdentifier} already stored")
+case class BasicFileMetaAlreadyStoredException(basicFileMeta: BasicFileMeta) extends RuntimeException(s"BasicFileMeta already stored for $basicFileMeta")

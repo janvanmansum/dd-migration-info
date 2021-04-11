@@ -40,18 +40,18 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
   database.initConnectionPool()
   logger.info("Database connection initialized.")
 
-  def createDataFileRecordsForDataset(datasetDoi: String): Try[Unit] = {
+  def loadBasicFileMetasForDataset(datasetDoi: String): Try[Unit] = {
     trace(datasetDoi)
 
     for {
       r <- dataverse.dataset(datasetDoi).viewAllVersions()
       vs <- r.data
-      dfs <- collectUniqueDataFilesFromDataverse(vs)
-      _ <- createDataFileRecords(datasetDoi, dfs)
+      bfms <- collectBasicFileMetas(vs)
+      _ <- createBasicFileMetasForDataset(datasetDoi, bfms)
     } yield ()
   }
 
-  def createDataFileRecordsForDataverse(): Try[Unit] = {
+  def loadBasicFileMetasForDataverse(): Try[Unit] = {
     trace(())
 
     for {
@@ -60,7 +60,7 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
       _ <- items
         .filter(_.`type` == "dataset")
         .map(getDoiFromContentItem)
-        .map(createDataFileRecordsForDataset).collectResults
+        .map(loadBasicFileMetasForDataset).collectResults
     } yield ()
   }
 
@@ -75,86 +75,114 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
     else s"${ item.protocol.get }:${ item.authority.get }/${ item.identifier.get }"
   }
 
-  /**
-   * Returns all the unique data files for this version sequence. Unless a file is replaced (i.e. its contents is changed)
-   * or deleted, the underlying data file is reused in subsequent versions.
-   *
-   * @param datasetVersions list of dataset versions
-   * @return
-   */
-  private def collectUniqueDataFilesFromDataverse(datasetVersions: List[DatasetVersion]): Try[List[DataFile]] = Try {
+  private def collectBasicFileMetas(datasetVersions: List[DatasetVersion]): Try[List[BasicFileMeta]] = Try {
     trace(datasetVersions)
-    datasetVersions.collect {
-      /*
-       * Files only in draft versions don't have a dataFile yet, so must be skipped.
-       */
-      case v => v.files.filter(_.dataFile.isDefined).map(f => f.dataFile.get.toPrestaged).map(pf => (pf.storageIdentifier, pf))
-    }.flatten.toMap.values.toList
+    datasetVersions.filter(_.versionState.exists(_ == "RELEASED"))
+      .sortBy(d => (d.versionNumber, d.versionMinorNumber))
+      .zipWithIndex.flatMap {
+      case (datasetVersion: DatasetVersion, index: Int) =>
+        datasetVersion.files.map(f =>
+          BasicFileMeta(
+            label = f.label.get,
+            directoryLabel = f.directoryLabel,
+            versionSequenceNumber = index + 1,
+            dataFile = f.dataFile.get.toPrestaged)
+        )
+    }
   }
 
-  private def createDataFileRecords(datasetDoi: String, dataFiles: List[DataFile]): Try[Unit] = {
-    trace(datasetDoi, dataFiles)
-    dataFiles.map {
-      df =>
-        for {
-          _ <- checkS3storageIdentifier(df.storageIdentifier)
-          (bucket, id) <- splitStorageIdentifier(df.storageIdentifier)
-          _ <- createDataFileRecord(datasetDoi, getNormalizedStorageIdentifier(bucket, id), df)
-        } yield ()
+  private def createBasicFileMetasForDataset(datasetDoi: String, basicFileMetas: List[BasicFileMeta]): Try[Unit] = {
+    trace(datasetDoi, basicFileMetas)
+    basicFileMetas.map {
+      bfm => createBasicFileMetaRecord(datasetDoi, bfm)
     }.collectResults.map(_ => ())
   }
 
-  def createDataFileRecord(datasetDoi: String, storageId: String, df: DataFile): Try[Unit] = {
-    database.doTransaction(implicit c => writeDataFileRecord(datasetDoi, storageId, df))
+  def createBasicFileMetaRecord(datasetDoi: String, basicFileMeta: BasicFileMeta): Try[Unit] = {
+    database.doTransaction(implicit c => writeBasicFileMetaRecord(datasetDoi, basicFileMeta))
   }
 
-  private def writeDataFileRecord(datasetDoi: String, storageIdentifier: String, df: DataFile)(implicit c: Connection): Try[Unit] = {
-    trace(datasetDoi, storageIdentifier, df)
+  private def writeBasicFileMetaRecord(datasetDoi: String, basicFileMeta: BasicFileMeta)(implicit c: Connection): Try[Unit] = {
+    trace(datasetDoi, basicFileMeta)
 
-    managed(c.prepareStatement("INSERT INTO data_file VALUES (?, ?, ?, ?, ?, ?);"))
+    val query =
+      """
+        |INSERT INTO basic_file_metadata (
+        |  storage_identifier,
+        |  dataset_doi,
+        |  version_sequence_number,
+        |  file_name,
+        |  directory_label,
+        |  mime_type,
+        |  sha1_checksum,
+        |  file_size)
+        |VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        |""".stripMargin
+
+    managed(c.prepareStatement(query))
       .map(prepStatement => {
-        prepStatement.setString(1, storageIdentifier)
+        prepStatement.setString(1, basicFileMeta.dataFile.storageIdentifier)
         prepStatement.setString(2, datasetDoi)
-        prepStatement.setString(3, df.fileName)
-        prepStatement.setString(4, df.mimeType)
-        prepStatement.setString(5, df.checksum.`@value`)
-        prepStatement.setLong(6, df.fileSize)
+        prepStatement.setInt(3, basicFileMeta.versionSequenceNumber)
+        prepStatement.setString(4, basicFileMeta.label)
+        prepStatement.setString(5, basicFileMeta.directoryLabel.orNull)
+        prepStatement.setString(6, basicFileMeta.dataFile.mimeType)
+        prepStatement.setString(7, basicFileMeta.dataFile.checksum.`@value`)
+        prepStatement.setLong(8, basicFileMeta.dataFile.fileSize)
         prepStatement.executeUpdate()
       })
       .tried
       .map(_ => ())
       .recoverWith {
         case e: SQLException if e.getMessage.toLowerCase contains "unique constraint" =>
-          Failure(DataFileAlreadyStoredException(df))
+          Failure(BasicFileMetaAlreadyStoredException(basicFileMeta))
       }
   }
 
-  def getDataFileRecordsForDataset(datasetId: String): Try[List[DataFile]] = {
-    database.doTransaction(implicit c => readDataFileRecords(datasetId))
+  def getBasicFileMetasForDatasetVersion(datasetId: String, seqNr: Int): Try[List[BasicFileMeta]] = {
+    database.doTransaction(implicit c => readBasicFileMetasForDatasetVersion(datasetId, seqNr))
   }
 
-  private def readDataFileRecords(datasetDoi: String, optId: Option[String] = Option.empty)(implicit c: Connection): Try[List[DataFile]] = {
+  private def readBasicFileMetasForDatasetVersion(datasetDoi: String, seqNr: Int, optId: Option[String] = Option.empty)(implicit c: Connection): Try[List[BasicFileMeta]] = {
     trace(datasetDoi, optId)
-    managed(c.prepareStatement("SELECT storage_identifier, file_name, mime_type, sha1_checksum, file_size FROM data_file WHERE dataset_doi = ?;"))
+    val query =
+      """
+        |SELECT storage_identifier,
+        |       version_sequence_number,
+        |       file_name,
+        |       directory_label,
+        |       mime_type,
+        |       sha1_checksum,
+        |       file_size
+        |FROM basic_file_metadata
+        |WHERE dataset_doi = ? AND version_sequence_number = ?;
+        |""".stripMargin
+
+    managed(c.prepareStatement(query))
       .map(prepStatement => {
         prepStatement.setString(1, datasetDoi)
+        prepStatement.setInt(2, seqNr)
         prepStatement.executeQuery()
       })
       .map(r => {
-        val dataFiles = new mutable.ListBuffer[DataFile]()
+        val dataFiles = new mutable.ListBuffer[BasicFileMeta]()
 
         while (r.next()) {
           dataFiles.append(
-            DataFile(
-              storageIdentifier = r.getString("storage_identifier"),
-              fileName = r.getString("file_name"),
-              mimeType = r.getString("mime_type"),
-              checksum = Checksum(
-                `@type` = "SHA-1",
-                `@value` = r.getString("sha1_checksum")
-              ),
-              fileSize = r.getLong("file_size"))
-          )
+            BasicFileMeta(
+              label = r.getString("file_name"),
+              directoryLabel = Option(r.getString("directory_label")),
+              versionSequenceNumber = r.getInt("version_sequence_number"),
+              dataFile = DataFile(
+                storageIdentifier = r.getString("storage_identifier"),
+                fileName = r.getString("file_name"),
+                mimeType = r.getString("mime_type"),
+                checksum = Checksum(
+                  `@type` = "SHA-1",
+                  `@value` = r.getString("sha1_checksum")
+                ),
+                fileSize = r.getLong("file_size")
+              )))
         }
         dataFiles.toList
       }).tried
