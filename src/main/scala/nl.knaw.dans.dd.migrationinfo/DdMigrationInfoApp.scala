@@ -77,19 +77,18 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
 
   private def collectBasicFileMetas(datasetVersions: List[DatasetVersion]): Try[List[BasicFileMeta]] = Try {
     trace(datasetVersions)
-    datasetVersions.collect {
-      /*
-       * Files in draft versions don't have a dataFile yet, so must be skipped.
-       */
-      case v => v.files.filter(_.dataFile.isDefined).zipWithIndex.map {
-        case (f, index) =>
+    datasetVersions.filter(_.versionState.exists(_ == "RELEASED"))
+      .sortBy(d => (d.versionNumber, d.versionMinorNumber))
+      .zipWithIndex.flatMap {
+      case (datasetVersion: DatasetVersion, index: Int) =>
+        datasetVersion.files.map(f =>
           BasicFileMeta(
             label = f.label.get,
             directoryLabel = f.directoryLabel,
             versionSequenceNumber = index + 1,
             dataFile = f.dataFile.get.toPrestaged)
-      }
-    }.flatten
+        )
+    }
   }
 
   private def createBasicFileMetasForDataset(datasetDoi: String, basicFileMetas: List[BasicFileMeta]): Try[Unit] = {
