@@ -31,24 +31,25 @@ paths:
                   Migration Info Service is running.
 
 
-  /datasets/{doi}/actions/load-from-dataverse:
+  /datasets/{datasetId}/actions/load-from-dataverse:
     parameters:
       - $ref: "#/components/parameters/DatasetIdentifier"
       - $ref: "#/components/parameters/PersistentIdentifier"
     post:
-      summary: Adds the records for the unique data files in the specified dataset
+      summary: Adds basic file metadata for the unique data files in the specified dataset
       responses:
         200:
           description: OK. Added data file records
         404:
           description: Not Found. Could not find the specified dataset
 
-  /datasets/{doi}/seq/{nr}/basic-file-metas:
+  /datasets/{datasetId}/seq/{sequenceNumber}/basic-file-metas:
     parameters:
       - $ref: "#/components/parameters/DatasetIdentifier"
+      - $ref: "#/components/parameters/SequenceNumber"
       - $ref: "#/components/parameters/PersistentIdentifier"
     get:
-      summary: Retrieves the unique datafiles from the specified dataset
+      summary: Retrieves the basic file metadata from the specified dataset version
       responses:
         200:
           description: OK
@@ -63,7 +64,7 @@ paths:
 
   /datasets/actions/load-from-dataverse:
     post:
-      summary: Loads all datafile records for all datasets in the configured dataverse
+      summary: Loads basic file metadata for all datasets in the configured dataverse
       responses:
         201:
           description: Created.
@@ -75,21 +76,23 @@ components:
   parameters:
 
     DatasetIdentifier:
-      description: |
+      description:
         Database ID of the dataset or the string `:persistentId`to indicate that a DOI is
         specified in the query parameter `persistentId`
       in: path
-      name: id
+      name: datasetId
       schema:
         type: string
       required: true
 
-    StorageIdentifier:
-      description: Storage identifier of a file
+    SequenceNumber:
+      description: Sequence number of a dataset version. This is a 1-based number that determines the
+        where a dataset version appears in the version history. It is not the same as Dataverse version
+        number because the sequence number does not distinguish between major and minor updates.
       in: path
-      name: storageId
+      name: sequenceNumber
       schema:
-        type: string
+        type: integer
       required: true
 
     PersistentIdentifier:
