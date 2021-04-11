@@ -33,15 +33,14 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
     Ok(s"Migration Info Service running ($version)")
   }
 
-  // TODO: convert to getDatasetDoi. If a database ID, the DOI must be looked up in Dataverse
   private def getDatasetId: String = {
     if (params("id") == ":persistentId") params("persistentId")
-    else params("id")
+    else throw new UnsupportedOperationException("Only :persistendId type identifiers are currently supported") // TODO: convert to getDatasetDoi. If a database ID, the DOI must be looked up in Dataverse
   }
 
-  post("/datasets/:id/datafiles/actions/load-from-dataverse") {
+  post("/datasets/:id/actions/load-from-dataverse") {
     val datasetId = getDatasetId
-    app.createDataFileRecordsForDataset(datasetId).map(_ => Ok(s"Records added for dataset $datasetId"))
+    app.loadBasicFileMetasForDataset(datasetId).map(_ => Ok(s"Records added for dataset $datasetId"))
       .doIfFailure {
         case NonFatal(e) => logger.warn(s"Exception when creating DataFile records for dataset $datasetId")
       }
@@ -52,7 +51,7 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
   }
 
   post("/datasets/actions/load-from-dataverse") {
-    app.createDataFileRecordsForDataverse()
+    app.loadBasicFileMetasForDataverse()
       .map(_ => Ok("Records added for dataverse root"))
       .doIfFailure {
         case NonFatal(e) => logger.warn("Errors when loading data file records from dataverse root", e)
@@ -63,9 +62,10 @@ class DdMigrationInfoServlet(app: DdMigrationInfoApp,
       .get
   }
 
-  get("/datasets/:id/datafiles") {
+  get("/datasets/:id/seq/:seqNr/basic-file-metas") {
     val datasetId = getDatasetId
-    app.getDataFileRecordsForDataset(datasetId)
+    val seqNr = params("seqNr").toInt
+    app.getBasicFileMetasForDatasetVersion(datasetId, seqNr)
       .map {
         dfs =>
           if (dfs.nonEmpty) Ok(Serialization.writePretty(dfs))
