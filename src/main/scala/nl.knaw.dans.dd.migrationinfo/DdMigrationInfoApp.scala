@@ -18,7 +18,7 @@ package nl.knaw.dans.dd.migrationinfo
 import nl.knaw.dans.lib.dataverse.DataverseInstance
 import nl.knaw.dans.lib.dataverse.model.DataverseItem
 import nl.knaw.dans.lib.dataverse.model.dataset.DatasetVersion
-import nl.knaw.dans.lib.dataverse.model.file.prestaged.{ Checksum, DataFile }
+import nl.knaw.dans.lib.dataverse.model.file.prestaged.{ Checksum, PrestagedFile }
 import nl.knaw.dans.lib.error._
 import nl.knaw.dans.lib.logging.DebugEnhancedLogging
 import resource.managed
@@ -86,7 +86,7 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
             label = f.label.get,
             directoryLabel = f.directoryLabel,
             versionSequenceNumber = index + 1,
-            dataFile = f.dataFile.get.toPrestaged)
+            prestagedFile = f.toPrestaged)
         )
     }
   }
@@ -114,21 +114,19 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
         |  file_name,
         |  directory_label,
         |  mime_type,
-        |  sha1_checksum,
-        |  file_size)
+        |  sha1_checksum)
         |VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         |""".stripMargin
 
     managed(c.prepareStatement(query))
       .map(prepStatement => {
-        prepStatement.setString(1, basicFileMeta.dataFile.storageIdentifier)
+        prepStatement.setString(1, basicFileMeta.prestagedFile.storageIdentifier)
         prepStatement.setString(2, datasetDoi)
         prepStatement.setInt(3, basicFileMeta.versionSequenceNumber)
         prepStatement.setString(4, basicFileMeta.label)
         prepStatement.setString(5, basicFileMeta.directoryLabel.orNull)
-        prepStatement.setString(6, basicFileMeta.dataFile.mimeType)
-        prepStatement.setString(7, basicFileMeta.dataFile.checksum.`@value`)
-        prepStatement.setLong(8, basicFileMeta.dataFile.fileSize)
+        prepStatement.setString(6, basicFileMeta.prestagedFile.mimeType)
+        prepStatement.setString(7, basicFileMeta.prestagedFile.checksum.`@value`)
         prepStatement.executeUpdate()
       })
       .tried
@@ -173,15 +171,14 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
               label = r.getString("file_name"),
               directoryLabel = Option(r.getString("directory_label")),
               versionSequenceNumber = r.getInt("version_sequence_number"),
-              dataFile = DataFile(
+              prestagedFile = PrestagedFile(
                 storageIdentifier = r.getString("storage_identifier"),
                 fileName = r.getString("file_name"),
                 mimeType = r.getString("mime_type"),
                 checksum = Checksum(
                   `@type` = "SHA-1",
                   `@value` = r.getString("sha1_checksum")
-                ),
-                fileSize = r.getLong("file_size")
+                )
               )))
         }
         dataFiles.toList
