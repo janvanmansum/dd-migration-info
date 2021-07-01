@@ -115,7 +115,7 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
         |  directory_label,
         |  mime_type,
         |  sha1_checksum)
-        |VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        |VALUES (?, ?, ?, ?, ?, ?, ?);
         |""".stripMargin
 
     managed(c.prepareStatement(query))
@@ -141,8 +141,8 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
     database.doTransaction(implicit c => readBasicFileMetasForDatasetVersion(datasetId, seqNr))
   }
 
-  private def readBasicFileMetasForDatasetVersion(datasetDoi: String, seqNr: Int, optId: Option[String] = Option.empty)(implicit c: Connection): Try[List[BasicFileMeta]] = {
-    trace(datasetDoi, optId)
+  private def readBasicFileMetasForDatasetVersion(datasetDoi: String, seqNr: Int)(implicit c: Connection): Try[List[BasicFileMeta]] = {
+    trace(datasetDoi, seqNr)
     val query =
       """
         |SELECT storage_identifier,
@@ -150,8 +150,7 @@ class DdMigrationInfoApp(configuration: Configuration) extends DebugEnhancedLogg
         |       file_name,
         |       directory_label,
         |       mime_type,
-        |       sha1_checksum,
-        |       file_size
+        |       sha1_checksum
         |FROM basic_file_metadata
         |WHERE dataset_doi = ? AND version_sequence_number = ?;
         |""".stripMargin
